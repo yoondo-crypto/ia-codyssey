@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>나만의 영화 티어리스트</title>
+<style>
+  :root {
+    --bg: #0d0d12;
+    --panel: #1a1a24;
+    --panel-line: #2c2c3a;
+    --text: #f0f0f5;
+    --muted: #9a9ab0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at top, #1a1a28 0%, var(--bg) 70%);
+    color: var(--text);
+    font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+    min-height: 100vh;
+    padding: 24px 32px 60px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 28px;
+    letter-spacing: 1px;
+    margin: 10px 0 24px;
+    text-shadow: 0 0 12px rgba(255,80,80,0.3);
+  }
+
+  /* 해시태그 입력란 */
+  .hashtag-box {
+    max-width: 1000px;
+    margin: 0 auto 24px;
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 14px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .hashtag-box label { color: var(--muted); white-space: nowrap; }
+  .hashtag-box input {
+    flex: 1;
+    background: #11111a;
+    border: 1px solid var(--panel-line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 15px;
+  }
+  .hashtag-box input:focus { outline: none; border-color: #ff5a5a; }
+
+  /* 미분류 영역 */
+  .unranked {
+    max-width: 1000px;
+    margin: 0 auto 22px;
+    background: var(--panel);
+    border: 1px dashed var(--panel-line);
+    border-radius: 14px;
+    padding: 14px 18px;
+  }
+  .unranked h2 { margin: 0 0 10px; font-size: 16px; color: var(--muted); }
+
+  /* 티어 영역 */
+  .tier-list { max-width: 1000px; margin: 0 auto; }
+  .tier-row {
+    display: flex;
+    align-items: stretch;
+    margin-bottom: 10px;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--panel-line);
+  }
+  .tier-label {
+    width: 70px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 800;
+    color: #1a1a1a;
+    flex-shrink: 0;
+  }
+  .tier-S .tier-label { background: #ff4d4d; }
+  .tier-A .tier-label { background: #ff8c3b; }
+  .tier-B .tier-label { background: #ffc93c; }
+  .tier-C .tier-label { background: #fff07a; }
+  .tier-D .tier-label { background: #f5f0dc; }
+  .tier-F .tier-label { background: #ffffff; }
+
+  .drop-zone {
+    flex: 1;
+    min-height: 70px;
+    background: #15151e;
+    padding: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-content: flex-start;
+  }
+  .drop-zone.dragover { background: #242435; }
+  .unranked .drop-zone {
+    background: transparent;
+    min-height: 60px;
+    border-radius: 8px;
+  }
+
+  /* 영화 박스 (iOS 아이콘 느낌) */
+  .movie {
+    background: linear-gradient(145deg, #3a3a50, #272738);
+    border: 1px solid #44445c;
+    border-radius: 16px;
+    padding: 12px 16px;
+    font-size: 14px;
+    cursor: grab;
+    user-select: none;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+    transition: transform 0.1s;
+  }
+  .movie:active { cursor: grabbing; }
+  .movie.dragging { opacity: 0.4; transform: scale(0.95); }
+
+  /* 초기화 버튼 */
+  .reset-wrap { max-width: 1000px; margin: 24px auto 0; text-align: center; }
+  #resetBtn {
+    background: #2c2c3a;
+    color: var(--text);
+    border: 1px solid #44445c;
+    border-radius: 10px;
+    padding: 12px 28px;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  #resetBtn:hover { background: #3a3a4c; }
+</style>
+</head>
+<body>
+  <h1>나만의 영화 티어리스트</h1>
+
+  <div class="hashtag-box">
+    <label>적용 기준 :</label>
+    <input type="text" id="hashtagInput" placeholder="예: #서사 #연출 #메시지">
+  </div>
+
+  <div class="unranked">
+    <h2>미분류</h2>
+    <div class="drop-zone" data-tier="미분류"></div>
+  </div>
+
+  <div class="tier-list" id="tierList"></div>
+
+  <div class="reset-wrap">
+    <button id="resetBtn">영화 배치 초기화</button>
+  </div>
+
+<script>
+  // ===== 기본 데이터 =====
+  const MOVIES = ["기생충","인터스텔라","라라랜드","센과 치히로의 행방불명",
+                  "어벤져스: 엔드게임","범죄도시","타이타닉","토이 스토리"];
+  const TIERS = ["S","A","B","C","D","F"];
+
+  const PLACEMENT_KEY = "movieTierPlacement"; // 영화 배치 저장 키
+  const HASHTAG_KEY = "movieTierHashtag";     // 해시태그 저장 키
+
+  // ===== 티어 영역 만들기 =====
+  const tierList = document.getElementById("tierList");
+  TIERS.forEach(t => {
+    const row = document.createElement("div");
+    row.className = "tier-row tier-" + t;
+    row.innerHTML = `
+      <div class="tier-label">${t}</div>
+      <div class="drop-zone" data-tier="${t}"></div>`;
+    tierList.appendChild(row);
+  });
+
+  const zones = document.querySelectorAll(".drop-zone");
+
+  // ===== 배치 불러오기 =====
+  // 형식: { "기생충": "S", "타이타닉": "미분류", ... }
+  function loadPlacement() {
+    const saved = localStorage.getItem(PLACEMENT_KEY);
+    let placement = {};
+    if (saved) {
+      try { placement = JSON.parse(saved); } catch(e) { placement = {}; }
+    }
+    // 저장값이 없는 영화는 미분류로
+    MOVIES.forEach(m => { if (!placement[m]) placement[m] = "미분류"; });
+    return placement;
+  }
+
+  function savePlacement(placement) {
+    localStorage.setItem(PLACEMENT_KEY, JSON.stringify(placement));
+  }
+
+  // ===== 화면에 영화 그리기 =====
+  function render() {
+    // 모든 영역 비우기
+    zones.forEach(z => z.innerHTML = "");
+    const placement = loadPlacement();
+
+    MOVIES.forEach(name => {
+      const tier = placement[name];
+      const box = document.createElement("div");
+      box.className = "movie";
+      box.textContent = name;
+      box.draggable = true;
+      box.dataset.name = name;
+
+      // 드래그 시작/종료
+      box.addEventListener("dragstart", () => {
+        box.classList.add("dragging");
+      });
+      box.addEventListener("dragend", () => {
+        box.classList.remove("dragging");
+      });
+
+      // 해당 티어 영역 찾아서 넣기
+      const zone = document.querySelector(`.drop-zone[data-tier="${tier}"]`);
+      (zone || document.querySelector('.drop-zone[data-tier="미분류"]')).appendChild(box);
+    });
+  }
+
+  // ===== 드롭 처리 =====
+  zones.forEach(zone => {
+    zone.addEventListener("dragover", e => {
+      e.preventDefault(); // 드롭 허용
+      zone.classList.add("dragover");
+    });
+    zone.addEventListener("dragleave", () => {
+      zone.classList.remove("dragover");
+    });
+    zone.addEventListener("drop", e => {
+      e.preventDefault();
+      zone.classList.remove("dragover");
+      const dragging = document.querySelector(".movie.dragging");
+      if (!dragging) return;
+
+      zone.appendChild(dragging); // 화면 이동
+
+      // 배치 정보 저장
+      const placement = loadPlacement();
+      placement[dragging.dataset.name] = zone.dataset.tier;
+      savePlacement(placement);
+    });
+  });
+
+  // ===== 해시태그 입력란 =====
+  const hashtagInput = document.getElementById("hashtagInput");
+  hashtagInput.value = localStorage.getItem(HASHTAG_KEY) || "";
+  hashtagInput.addEventListener("input", () => {
+    localStorage.setItem(HASHTAG_KEY, hashtagInput.value);
+  });
+
+  // ===== 초기화 버튼 (영화 배치만 초기화) =====
+  document.getElementById("resetBtn").addEventListener("click", () => {
+    if (confirm("영화 배치를 모두 미분류로 되돌릴까요?\n(해시태그 기준은 유지됩니다.)")) {
+      localStorage.removeItem(PLACEMENT_KEY); // 배치만 삭제, 해시태그는 그대로
+      render();
+    }
+  });
+
+  // ===== 시작 =====
+  render();
+</script>
+</body>
+</html>
